@@ -13,13 +13,34 @@ import LoginModal from './components/LoginModal';
 import UserAuthModal from './components/UserAuthModal';
 import Footer from './components/Footer';
 import UserManagement from './components/UserManagement';
-import { getProducts, saveProducts, getUsers, saveUsers } from './services/dataService';
+import { 
+  getProducts, 
+  getUsers, 
+  getBrands, 
+  getCategories,
+  saveProduct,
+  deleteProduct as deleteProductFromDb,
+  addUser,
+  updateUser,
+  deleteUser as deleteUserFromDb,
+  addBrand,
+  deleteBrand,
+  updateBrand,
+  addCategory,
+  deleteCategory,
+  updateCategory,
+  restoreInitialData,
+} from './services/dataService';
 import AdminNotification from './components/AdminNotification';
+import BrandCategoryManagement from './components/BrandCategoryManagement';
+import { isFirebaseConfigured, firebaseConfig } from './firebase/config';
+import FirebaseNotConfigured from './components/FirebaseNotConfigured';
+
 
 const ADMIN_USERNAME = 'GEOVANI';
 const ADMIN_PASSWORD = '140890';
 
-type AdminView = 'products' | 'users';
+type AdminView = 'products' | 'users' | 'brands' | 'categories';
 
 const App: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -39,35 +60,41 @@ const App: React.FC = () => {
   
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [users, setUsers] = useState<User[]>([]);
+  const [brands, setBrands] = useState<string[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   
   const [adminView, setAdminView] = useState<AdminView>('products');
   const [showAdminNotification, setShowAdminNotification] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
 
 
   useEffect(() => {
+    if (!isFirebaseConfigured) {
+        setIsLoading(false);
+        return;
+    }
     const loadData = async () => {
-      const loadedProducts = await getProducts();
-      setProducts(loadedProducts);
-      const loadedUsers = await getUsers();
-      setUsers(loadedUsers);
+      setIsLoading(true);
+      try {
+        const [loadedProducts, loadedUsers, loadedBrands, loadedCategories] = await Promise.all([
+          getProducts(),
+          getUsers(),
+          getBrands(),
+          getCategories()
+        ]);
+        setProducts(loadedProducts);
+        setUsers(loadedUsers);
+        setBrands(loadedBrands);
+        setCategories(loadedCategories);
+      } catch (error) {
+        console.error("Erro ao carregar dados do Firebase:", error);
+        alert("Não foi possível carregar os dados. Verifique sua conexão e a configuração do Firebase.");
+      } finally {
+        setIsLoading(false);
+      }
     };
     loadData();
   }, []);
-
-  useEffect(() => {
-    if (products.length > 0) { // Evita salvar o estado inicial vazio
-        saveProducts(products);
-    }
-  }, [products]);
-
-  useEffect(() => {
-    if (users.length > 0) { // Evita salvar o estado inicial vazio
-        saveUsers(users);
-    }
-  }, [users]);
-
-  const allBrands = useMemo(() => [...new Set(products.map(p => p.brand))], [products]);
-  const allCategories = useMemo(() => [...new Set(products.map(p => p.category))], [products]);
 
   const handleBrandSelect = (brand: string) => {
     setSelectedBrand(prev => (prev === brand ? null : brand));
@@ -91,6 +118,9 @@ const App: React.FC = () => {
 
   const handleSearchChange = (term: string) => {
     setSearchTerm(term);
+    if (viewingProduct) {
+      setViewingProduct(null);
+    }
   };
 
   const filteredProducts = useMemo(() => {
@@ -160,7 +190,7 @@ const App: React.FC = () => {
     setTimeout(() => setIsCartOpen(true), 100);
   };
 
-  const handleUpdateQuantity = (productId: number, newQuantity: number) => {
+  const handleUpdateQuantity = (productId: string, newQuantity: number) => {
     if (newQuantity <= 0) {
       handleRemoveFromCart(productId);
     } else {
@@ -172,9 +202,67 @@ const App: React.FC = () => {
     }
   };
 
-  const handleRemoveFromCart = (productId: number) => {
+  const handleRemoveFromCart = (productId: string) => {
     setCartItems(prevItems => prevItems.filter(item => item.id !== productId));
   };
+
+  const cartCalculation = useMemo(() => {
+    const subtotal = cartItems.reduce((total, item) => total + item.price * item.quantity, 0);
+    const itemCount = cartItems.reduce((total, item) => total + item.quantity, 0);
+    let totalDiscountAmount = 0;
+
+    const itemsGroupedByProduct = cartItems.reduce((acc, cartItem) => {
+      const originalProduct = products.find(p => 
+          p.id === cartItem.id || (p.variants && p.variants.some(v => v.id === cartItem.id))
+      );
+      
+      if (originalProduct) {
+          const productId = originalProduct.id;
+          if (!acc[productId]) {
+              acc[productId] = { totalQuantity: 0, items: [], product: originalProduct };
+          }
+          acc[productId].totalQuantity += cartItem.quantity;
+          acc[productId].items.push(cartItem);
+      }
+      return acc;
+    }, {} as Record<string, { totalQuantity: number; items: CartItem[], product: Product }>);
+    
+    for (const productId in itemsGroupedByProduct) {
+      const group = itemsGroupedByProduct[productId];
+      const product = group.product;
+
+      if (product.discounts && product.discounts.length > 0) {
+        const sortedDiscounts = [...product.discounts].sort((a, b) => b.quantity - a.quantity);
+        let applicableDiscount = null;
+        
+        for (const tier of sortedDiscounts) {
+          if (group.totalQuantity >= tier.quantity) {
+            applicableDiscount = tier;
+            break; 
+          }
+        }
+
+        if (applicableDiscount) {
+          if (applicableDiscount.type === 'percentage') {
+            const groupSubtotal = group.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+            totalDiscountAmount += groupSubtotal * applicableDiscount.value;
+          } else { // 'value'
+            totalDiscountAmount += group.totalQuantity * applicableDiscount.value;
+          }
+        }
+      }
+    }
+
+    const total = subtotal - totalDiscountAmount;
+
+    return {
+      subtotal,
+      itemCount,
+      discountAmount: totalDiscountAmount,
+      total,
+    };
+  }, [cartItems, products]);
+
 
   const handleCheckout = () => {
     if (cartItems.length === 0) {
@@ -188,19 +276,27 @@ const App: React.FC = () => {
       return;
     }
 
+    const { subtotal, discountAmount, total } = cartCalculation;
     const phoneNumber = '5566996970685';
-    const totalPrice = cartItems.reduce((total, item) => total + item.price * item.quantity, 0);
-    const formattedTotalPrice = new Intl.NumberFormat('pt-BR', {
+
+    const formatCurrency = (value: number) => new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: 'BRL',
-    }).format(totalPrice);
+    }).format(value);
 
     let message = `Olá! Meu nome é ${currentUser.name}.\n\nGostaria de fazer o seguinte pedido:\n\n`;
     cartItems.forEach(item => {
-      const formattedItemPrice = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.price);
-      message += `*${item.quantity}x* - ${item.name} (${formattedItemPrice} cada)\n`;
+      message += `*${item.quantity}x* - ${item.name} (${formatCurrency(item.price)} cada)\n`;
     });
-    message += `\n*Total do Pedido: ${formattedTotalPrice}*`;
+
+    message += `\n---------------------\n`;
+    message += `*Subtotal:* ${formatCurrency(subtotal)}\n`;
+    
+    if (discountAmount > 0) {
+      message += `*Descontos Aplicados:* -${formatCurrency(discountAmount)}\n`;
+    }
+
+    message += `*Total do Pedido: ${formatCurrency(total)}*`;
 
     const encodedMessage = encodeURIComponent(message);
     const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodedMessage}`;
@@ -210,10 +306,6 @@ const App: React.FC = () => {
     setCartItems([]);
     setIsCartOpen(false);
   };
-
-  const cartItemCount = useMemo(() => {
-    return cartItems.reduce((total, item) => total + item.quantity, 0);
-  }, [cartItems]);
   
   const handleAddNewProduct = () => {
     setEditingProduct(null);
@@ -225,38 +317,52 @@ const App: React.FC = () => {
     setIsFormOpen(true);
   };
 
-  const handleDeleteProduct = (productId: number) => {
-    if (window.confirm('Tem certeza que deseja remover este produto?')) {
-      setProducts(prev => prev.filter(p => p.id !== productId));
-      setIsFormOpen(false);
-      setEditingProduct(null);
+  const handleDeleteProduct = async (productId: string) => {
+    const productToDelete = products.find(p => p.id === productId);
+    if (productToDelete && window.confirm('Tem certeza que deseja remover este produto?')) {
+      try {
+        await deleteProductFromDb(productToDelete);
+        setProducts(prev => prev.filter(p => p.id !== productId));
+        setIsFormOpen(false);
+        setEditingProduct(null);
+      } catch (error) {
+        console.error("Erro ao deletar produto:", error);
+        alert("Falha ao deletar o produto.");
+      }
     }
   };
 
-  const handleSaveProduct = (productData: Omit<Product, 'id'> & { id?: number }) => {
-    const hasVariants = productData.variants && productData.variants.length > 0;
-    const allVariantsOutOfStock = hasVariants ? productData.variants.every(v => v.isOutOfStock) : false;
+  const handleSaveProduct = async (
+    productData: Omit<Product, 'id'> & { id?: string },
+    imageFile: File | null
+  ) => {
+      const hasVariants = productData.variants && productData.variants.length > 0;
+      const allVariantsOutOfStock = hasVariants ? productData.variants.every(v => v.isOutOfStock) : false;
 
-    const finalProductData = {
-      ...productData,
-      isOutOfStock: hasVariants ? allVariantsOutOfStock : productData.isOutOfStock,
-    };
-    
-    if (finalProductData.id) { // Editing existing product
-      setProducts(prev => prev.map(p => p.id === finalProductData.id ? { ...p, ...finalProductData } as Product : p));
-    } else { // Adding new product
-      const newProduct: Product = {
-        ...finalProductData,
-        id: Date.now(), // simple id generation
+      const baseProductData = {
+          ...productData,
+          isOutOfStock: hasVariants ? allVariantsOutOfStock : productData.isOutOfStock,
+          discounts: productData.discounts?.filter(d => d.quantity > 0 && d.value > 0),
       };
-      setProducts(prev => [newProduct, ...prev]);
-    }
-    setIsFormOpen(false);
-    setEditingProduct(null);
+      
+      try {
+        const savedProduct = await saveProduct(baseProductData, imageFile);
+        if (baseProductData.id) { // Editing
+            setProducts(prev => prev.map(p => p.id === savedProduct.id ? savedProduct : p));
+        } else { // Adding
+            setProducts(prev => [savedProduct, ...prev]);
+        }
+        setIsFormOpen(false);
+        setEditingProduct(null);
+      } catch (error) {
+          console.error("Erro ao salvar produto:", error);
+          alert("Falha ao salvar o produto.");
+      }
   };
   
   const handleViewDetails = (product: Product) => {
     setViewingProduct(product);
+    window.scrollTo(0, 0);
   };
 
   const handleCloseDetails = () => {
@@ -294,63 +400,173 @@ const App: React.FC = () => {
       }
   };
   
-  const handleUserAuth = (name: string, whatsapp: string) => {
+  const handleUserLogin = (whatsapp: string) => {
     const existingUser = users.find(u => u.whatsapp === whatsapp);
-    const adminPhoneNumber = '5566996970685';
-
+    
     if (existingUser) {
         if (existingUser.status === 'approved') {
             setCurrentUser(existingUser);
             setIsUserAuthModalOpen(false);
+            alert(`Bem-vindo(a) de volta, ${existingUser.name}!`);
         } else { // 'pending'
             alert('Seu cadastro ainda está pendente de aprovação. Por favor, aguarde.');
         }
-    } else { // New user
-        const newUser: User = { name, whatsapp, status: 'pending' };
-        setUsers(prev => [...prev, newUser]);
-        
-        const message = `Olá! Meu nome é ${name} e meu WhatsApp é ${whatsapp}. Sou um(a) profissional cabeleireiro(a) e gostaria de solicitar a liberação para acessar o catálogo da KI CHARME.`;
-        const encodedMessage = encodeURIComponent(message);
-        const whatsappUrl = `https://wa.me/${adminPhoneNumber}?text=${encodedMessage}`;
-        
-        window.open(whatsappUrl, '_blank');
-        
-        alert('Sua solicitação de acesso foi enviada! Você será notificado assim que seu cadastro for aprovado pelo administrador.');
-        setIsUserAuthModalOpen(false);
+    } else {
+        alert('WhatsApp não encontrado. Por favor, verifique o número ou cadastre-se.');
     }
   };
 
-  const handleApproveUser = (whatsapp: string) => {
-    setUsers(prevUsers => 
-        prevUsers.map(user => 
-            user.whatsapp === whatsapp ? { ...user, status: 'approved' } : user
-        )
-    );
-    alert('Cliente aprovado com sucesso!');
+  const handleUserRegister = async (name: string, whatsapp: string) => {
+    const existingUser = users.find(u => u.whatsapp === whatsapp);
+    const adminPhoneNumber = '5566996970685';
+
+    if (existingUser) {
+      alert('Este número de WhatsApp já está cadastrado. Por favor, tente entrar.');
+      return;
+    }
+    
+    const newUser: User = { name, whatsapp, status: 'pending' };
+    try {
+      await addUser(newUser);
+      setUsers(prev => [...prev, newUser]);
+
+      const message = `Olá! Meu nome é ${name} e meu WhatsApp é ${whatsapp}. Sou um(a) profissional cabeleireiro(a) e gostaria de solicitar a liberação para acessar o catálogo da KI CHARME.`;
+      const encodedMessage = encodeURIComponent(message);
+      const whatsappUrl = `https://wa.me/${adminPhoneNumber}?text=${encodedMessage}`;
+      
+      window.open(whatsappUrl, '_blank');
+      
+      alert('Sua solicitação de acesso foi enviada! Você será notificado assim que seu cadastro for aprovado pelo administrador.');
+      setIsUserAuthModalOpen(false);
+    } catch (error) {
+      console.error("Erro ao registrar usuário:", error);
+      alert("Falha ao registrar. Tente novamente.");
+    }
+  };
+
+  const handleApproveUser = async (whatsapp: string) => {
+    const userToUpdate = users.find(u => u.whatsapp === whatsapp);
+    if (!userToUpdate) return;
+    
+    const updatedUser = { ...userToUpdate, status: 'approved' as const };
+    try {
+      await updateUser(updatedUser);
+      setUsers(prevUsers => prevUsers.map(user => user.whatsapp === whatsapp ? updatedUser : user));
+      alert('Cliente aprovado com sucesso!');
+    } catch (error) {
+      console.error("Erro ao aprovar usuário:", error);
+      alert("Falha ao aprovar cliente.");
+    }
   };
 
   const handleUserLogout = () => {
     setCurrentUser(null);
   };
   
-  const handleDeleteUser = (whatsapp: string) => {
+  const handleDeleteUser = async (whatsapp: string) => {
     if (window.confirm('Tem certeza que deseja remover este cliente? Esta ação não pode ser desfeita.')) {
+      try {
+        await deleteUserFromDb(whatsapp);
         if (currentUser?.whatsapp === whatsapp) {
             setCurrentUser(null);
         }
         setUsers(prev => prev.filter(u => u.whatsapp !== whatsapp));
+      } catch (error) {
+        console.error("Erro ao deletar usuário:", error);
+        alert("Falha ao deletar cliente.");
+      }
     }
   };
 
-  const showSearchBar = !viewingProduct && !isAdminMode;
-  const isUserLoggedIn = !!currentUser;
+  const handleAddItem = (setter: React.Dispatch<React.SetStateAction<string[]>>, addFn: (item: string) => Promise<void>) => async (item: string) => {
+    try {
+      await addFn(item);
+      setter(prev => [...prev, item].sort());
+    } catch (error) {
+      console.error("Erro ao adicionar item:", error);
+      alert("Falha ao adicionar item.");
+    }
+  };
 
+  const handleDeleteItem = (setter: React.Dispatch<React.SetStateAction<string[]>>, deleteFn: (item: string) => Promise<void>) => async (item: string) => {
+    try {
+      await deleteFn(item);
+      setter(prev => prev.filter(i => i !== item));
+    } catch (error) {
+      console.error("Erro ao deletar item:", error);
+      alert("Falha ao deletar item.");
+    }
+  };
+  
+  const handleEditItem = (
+    itemType: 'brand' | 'category',
+    setter: React.Dispatch<React.SetStateAction<string[]>>,
+    updateFn: (old: string, newI: string) => Promise<void>
+  ) => async (oldItem: string, newItem: string) => {
+    try {
+      await updateFn(oldItem, newItem);
+      setter(prev => prev.map(item => (item === oldItem ? newItem : item)).sort());
+
+      // Reload products to reflect changes, as Firebase functions now handle this atomically
+      const loadedProducts = await getProducts();
+      setProducts(loadedProducts);
+
+    } catch (error) {
+      console.error("Erro ao editar item:", error);
+      alert("Falha ao editar item e atualizar produtos.");
+    }
+  };
+  
+  const handleRestoreData = async () => {
+      const confirmationMessage = `Tem certeza que deseja restaurar os dados padrão?
+
+TUDO o que está no banco de dados (produtos, marcas, categorias) será APAGADO e substituído pelos dados originais do aplicativo.
+
+Esta ação não pode ser desfeita.`;
+
+      if (!window.confirm(confirmationMessage)) {
+          return;
+      }
+      setIsLoading(true);
+      try {
+          await restoreInitialData();
+          alert('Restauração concluída com sucesso! Os dados padrão foram carregados no Firebase. A página será recarregada.');
+          window.location.reload();
+      } catch (error: any) {
+          console.error("Erro na restauração:", error);
+          alert(`Ocorreu um erro durante a restauração: ${error.message}`);
+      } finally {
+        setIsLoading(false);
+      }
+  };
+
+  const showSearchBar = viewingProduct ? true : !isAdminMode;
+  const isUserLoggedIn = !!currentUser;
   const filterKey = `${selectedBrand}-${selectedCategory}`;
+
+  const adminTitle = {
+    products: 'Gerenciar Catálogo',
+    users: 'Gerenciar Clientes',
+    brands: 'Gerenciar Marcas',
+    categories: 'Gerenciar Categorias',
+  };
+  
+  if (!isFirebaseConfigured) {
+    return <FirebaseNotConfigured />;
+  }
+  
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="text-xl font-semibold text-gray-700">Carregando catálogo...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-gray-50 min-h-screen font-sans flex flex-col">
       <Header
-        cartItemCount={cartItemCount}
+        cartItemCount={cartCalculation.itemCount}
         onCartClick={() => setIsCartOpen(true)}
         onGoHome={handleGoHome}
         searchTerm={searchTerm}
@@ -364,8 +580,10 @@ const App: React.FC = () => {
         {viewingProduct && !isAdminMode ? (
           <ProductDetail 
             product={viewingProduct}
+            allProducts={products}
             onClose={handleCloseDetails}
             onAddToCart={handleAddToCart}
+            onViewDetails={handleViewDetails}
             isUserLoggedIn={isUserLoggedIn}
             onLoginClick={() => setIsUserAuthModalOpen(true)}
           />
@@ -375,12 +593,12 @@ const App: React.FC = () => {
               <>
                 <div className="space-y-8 mb-8">
                   <BrandFilter 
-                    brands={allBrands}
+                    brands={brands}
                     selectedBrand={selectedBrand}
                     onBrandSelect={handleBrandSelect}
                   />
                   <CategoryFilter
-                    categories={allCategories}
+                    categories={categories}
                     selectedCategory={selectedCategory}
                     onCategorySelect={handleCategorySelect}
                   />
@@ -402,45 +620,46 @@ const App: React.FC = () => {
                 {showAdminNotification && <AdminNotification onDismiss={() => setShowAdminNotification(false)} />}
                 <div className="flex justify-between items-center mb-8">
                   <h1 className="text-3xl md:text-4xl font-extrabold text-gray-800">
-                    {adminView === 'products' ? 'Gerenciar Catálogo' : 'Gerenciar Clientes'}
+                    {adminTitle[adminView]}
                   </h1>
-                  {adminView === 'products' && (
-                    <button
-                      onClick={handleAddNewProduct}
-                      className="bg-accent text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 hover:bg-accent-hover transition-colors"
-                    >
-                      <PlusIcon />
-                      Adicionar Novo Produto
-                    </button>
-                  )}
+                   <div className="flex items-center gap-4">
+                      <button
+                        onClick={handleRestoreData}
+                        className="bg-warning text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 hover:bg-warning-hover transition-colors"
+                      >
+                        Restaurar Dados Padrão
+                      </button>
+                      {adminView === 'products' && (
+                        <button
+                          onClick={handleAddNewProduct}
+                          className="bg-accent text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 hover:bg-accent-hover transition-colors"
+                        >
+                          <PlusIcon />
+                          Adicionar Novo Produto
+                        </button>
+                      )}
+                   </div>
                 </div>
 
                 <div className="mb-6 border-b border-gray-200">
                     <nav className="-mb-px flex space-x-6" aria-label="Tabs">
-                        <button
-                            onClick={() => setAdminView('products')}
-                            className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                                adminView === 'products'
-                                ? 'border-primary text-primary'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                            }`}
-                        >
-                            Produtos
-                        </button>
-                        <button
-                             onClick={() => setAdminView('users')}
-                             className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                                 adminView === 'users'
+                        {Object.keys(adminTitle).map((view) => (
+                           <button
+                             key={view}
+                             onClick={() => setAdminView(view as AdminView)}
+                             className={`capitalize whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                                 adminView === view
                                  ? 'border-primary text-primary'
                                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                              }`}
-                        >
-                            Clientes
-                        </button>
+                           >
+                             {view === 'users' ? 'Clientes' : view}
+                           </button>
+                        ))}
                     </nav>
                 </div>
 
-                {adminView === 'products' ? (
+                {adminView === 'products' && (
                   <ProductList
                     products={products}
                     onAddToCart={() => {}}
@@ -450,8 +669,27 @@ const App: React.FC = () => {
                     isUserLoggedIn={true}
                     onLoginClick={() => {}}
                   />
-                ) : (
+                )}
+                {adminView === 'users' && (
                   <UserManagement users={users} onDeleteUser={handleDeleteUser} onApproveUser={handleApproveUser} />
+                )}
+                {adminView === 'brands' && (
+                  <BrandCategoryManagement 
+                    title="Gerenciar Marcas"
+                    items={brands}
+                    onAddItem={handleAddItem(setBrands, addBrand)}
+                    onDeleteItem={handleDeleteItem(setBrands, deleteBrand)}
+                    onEditItem={handleEditItem('brand', setBrands, updateBrand)}
+                  />
+                )}
+                {adminView === 'categories' && (
+                  <BrandCategoryManagement 
+                    title="Gerenciar Categorias"
+                    items={categories}
+                    onAddItem={handleAddItem(setCategories, addCategory)}
+                    onDeleteItem={handleDeleteItem(setCategories, deleteCategory)}
+                    onEditItem={handleEditItem('category', setCategories, updateCategory)}
+                  />
                 )}
               </>
             )}
@@ -471,6 +709,9 @@ const App: React.FC = () => {
         onCheckout={handleCheckout}
         isUserLoggedIn={isUserLoggedIn}
         onLoginClick={() => setIsUserAuthModalOpen(true)}
+        subtotal={cartCalculation.subtotal}
+        discountAmount={cartCalculation.discountAmount}
+        total={cartCalculation.total}
       />
       {isFormOpen && (
         <ProductForm
@@ -478,6 +719,8 @@ const App: React.FC = () => {
           onSave={handleSaveProduct}
           onClose={() => setIsFormOpen(false)}
           onDelete={handleDeleteProduct}
+          brands={brands}
+          categories={categories}
         />
       )}
       {productForVariants && (
@@ -499,7 +742,8 @@ const App: React.FC = () => {
       )}
       {isUserAuthModalOpen && !currentUser && (
         <UserAuthModal
-          onAuth={handleUserAuth}
+          onLogin={handleUserLogin}
+          onRegister={handleUserRegister}
           onClose={() => setIsUserAuthModalOpen(false)}
         />
       )}

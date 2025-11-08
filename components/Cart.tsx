@@ -9,11 +9,14 @@ interface CartProps {
   isOpen: boolean;
   onClose: () => void;
   cartItems: CartItem[];
-  onUpdateQuantity: (productId: number, newQuantity: number) => void;
-  onRemoveItem: (productId: number) => void;
+  onUpdateQuantity: (productId: string, newQuantity: number) => void;
+  onRemoveItem: (productId: string) => void;
   onCheckout: () => void;
   isUserLoggedIn: boolean;
   onLoginClick: () => void;
+  subtotal: number;
+  discountAmount: number;
+  total: number;
 }
 
 const Cart: React.FC<CartProps> = ({
@@ -24,13 +27,15 @@ const Cart: React.FC<CartProps> = ({
   onRemoveItem,
   onCheckout,
   isUserLoggedIn,
-  onLoginClick
+  onLoginClick,
+  subtotal,
+  discountAmount,
+  total,
 }) => {
-  const totalPrice = cartItems.reduce((total, item) => total + item.price * item.quantity, 0);
-  const formattedTotalPrice = new Intl.NumberFormat('pt-BR', {
+  const formatCurrency = (value: number) => new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
-  }).format(totalPrice);
+  }).format(value);
 
   return (
     <>
@@ -68,7 +73,7 @@ const Cart: React.FC<CartProps> = ({
                     <h3 className="font-semibold text-gray-800">{item.name}</h3>
                     {isUserLoggedIn ? (
                       <p className="text-primary font-bold text-sm">
-                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.price)}
+                        {formatCurrency(item.price)}
                       </p>
                     ) : (
                        <button
@@ -94,11 +99,23 @@ const Cart: React.FC<CartProps> = ({
                 </div>
               ))}
             </div>
-            <div className="p-6 border-t bg-gray-50">
-              <div className="flex justify-between items-center mb-4">
+            <div className="p-6 border-t bg-gray-50 space-y-3">
+               <div className="flex justify-between items-center text-gray-600">
+                <span>Subtotal</span>
+                <span>{isUserLoggedIn ? formatCurrency(subtotal) : '-'}</span>
+              </div>
+              
+              {discountAmount > 0 && isUserLoggedIn && (
+                <div className="flex justify-between items-center text-green-600 font-semibold">
+                  <span>Descontos Aplicados</span>
+                  <span>-{formatCurrency(discountAmount)}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between items-center pt-2 border-t">
                 <span className="text-lg font-semibold text-gray-800">Total</span>
                 {isUserLoggedIn ? (
-                  <span className="text-2xl font-extrabold text-primary">{formattedTotalPrice}</span>
+                  <span className="text-2xl font-extrabold text-primary">{formatCurrency(total)}</span>
                 ) : (
                   <span className="text-sm font-semibold text-gray-700">Faça login para ver</span>
                 )}

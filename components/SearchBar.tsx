@@ -8,16 +8,16 @@ interface SearchBarProps {
 
 const SearchBar: React.FC<SearchBarProps> = ({ searchTerm, onSearchChange }) => {
   return (
-    <div className="relative w-full max-w-2xl mx-auto">
+    <div className="relative w-full">
       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
         <SearchIcon />
       </div>
       <input
         type="text"
-        placeholder="Pesquisar produtos, marcas ou categorias..."
+        placeholder="Pesquisar produtos, marcas..."
         value={searchTerm}
         onChange={(e) => onSearchChange(e.target.value)}
-        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-full shadow-sm text-base focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-shadow"
+        className="w-full pl-10 pr-4 py-2.5 bg-gray-100 border-2 border-transparent rounded-full text-base placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary focus:bg-white transition-colors"
         aria-label="Pesquisar produtos"
       />
     </div>

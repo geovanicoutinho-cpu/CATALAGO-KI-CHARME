@@ -41,10 +41,37 @@ const Header: React.FC<HeaderProps> = ({
     prevCartItemCount.current = cartItemCount;
   }, [cartItemCount]);
 
+  const userActions = (
+     <>
+        {currentUser ? (
+           <div className="flex items-center gap-3">
+             <span className="text-sm font-medium text-gray-700 hidden sm:inline">Olá, {currentUser.name}!</span>
+             <button 
+                onClick={onLogoutClick} 
+                className="p-2 rounded-full text-gray-700 hover:bg-gray-100 transition-colors"
+                aria-label="Sair da conta"
+              >
+               <LogoutIcon />
+             </button>
+           </div>
+        ) : (
+          <button 
+            onClick={onLoginClick}
+            className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-primary transition-colors p-2 rounded-lg hover:bg-gray-100"
+            aria-label="Entrar ou cadastrar"
+          >
+            <UserIcon />
+            <span className="hidden md:inline">Entrar / Cadastrar</span>
+          </button>
+        )}
+      </>
+  );
+
   return (
     <header className="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-40">
-      <div className="container mx-auto px-4 py-4">
-        <div className="flex justify-between items-center gap-4">
+      <div className="container mx-auto px-4">
+        {/* Desktop Header */}
+        <div className="hidden md:flex justify-between items-center gap-6 py-3">
           <div className="flex-shrink-0">
             <h1 className="text-2xl font-bold">
               <button onClick={onGoHome} aria-label="Ki Charme Cosméticos - Página Inicial" className="focus:outline-none focus:ring-2 focus:ring-primary rounded">
@@ -53,31 +80,13 @@ const Header: React.FC<HeaderProps> = ({
             </h1>
           </div>
           
-          <div className="flex items-center gap-4 flex-shrink-0">
-            {currentUser ? (
-               <div className="flex items-center gap-3">
-                 <span className="text-sm font-medium text-gray-700 hidden sm:inline">Olá, {currentUser.name}!</span>
-                 <button 
-                    onClick={onLogoutClick} 
-                    className="p-2 rounded-full text-gray-700 hover:bg-gray-100 transition-colors"
-                    aria-label="Sair da conta"
-                  >
-                   <LogoutIcon />
-                 </button>
-               </div>
-            ) : (
-              <button 
-                onClick={onLoginClick}
-                className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-primary transition-colors p-2 rounded-lg hover:bg-gray-100"
-                aria-label="Entrar ou cadastrar"
-              >
-                <UserIcon />
-                <span className="hidden md:inline">Entrar / Cadastrar</span>
-              </button>
-            )}
-
-            <div className="h-6 w-px bg-gray-200 hidden sm:block"></div>
-            
+          <div className="flex-1 max-w-xl">
+            {showSearchBar && <SearchBar searchTerm={searchTerm} onSearchChange={onSearchChange} />}
+          </div>
+          
+          <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+            {userActions}
+            <div className="h-6 w-px bg-gray-200"></div>
             <button
               onClick={onCartClick}
               className={`relative text-gray-700 hover:text-primary transition-colors p-2 rounded-full hover:bg-gray-100 ${isAnimating ? 'animate-pop' : ''}`}
@@ -92,12 +101,39 @@ const Header: React.FC<HeaderProps> = ({
             </button>
           </div>
         </div>
-        
-        {showSearchBar && (
-          <div className="mt-4">
-            <SearchBar searchTerm={searchTerm} onSearchChange={onSearchChange} />
-          </div>
-        )}
+
+        {/* Mobile Header */}
+        <div className="md:hidden">
+            <div className="flex justify-between items-center py-3">
+                <div className="flex-shrink-0">
+                    <h1 className="text-2xl font-bold">
+                    <button onClick={onGoHome} aria-label="Ki Charme Cosméticos - Página Inicial" className="focus:outline-none focus:ring-2 focus:ring-primary rounded">
+                        <Logo />
+                    </button>
+                    </h1>
+                </div>
+                <div className="flex items-center gap-2">
+                    {userActions}
+                    <button
+                        onClick={onCartClick}
+                        className={`relative text-gray-700 hover:text-primary transition-colors p-2 rounded-full hover:bg-gray-100 ${isAnimating ? 'animate-pop' : ''}`}
+                        aria-label="Abrir carrinho"
+                    >
+                        <ShoppingCartIcon />
+                        {cartItemCount > 0 && (
+                            <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-accent rounded-full">
+                            {cartItemCount}
+                            </span>
+                        )}
+                    </button>
+                </div>
+            </div>
+            {showSearchBar && (
+                <div className="pb-4">
+                    <SearchBar searchTerm={searchTerm} onSearchChange={onSearchChange} />
+                </div>
+            )}
+        </div>
       </div>
     </header>
   );

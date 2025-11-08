@@ -1,86 +1,188 @@
+import { db, storage } from '../firebase/config';
+import { collection, getDocs, doc, setDoc, deleteDoc, writeBatch, getDoc, query, where, documentId } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { Product, User } from '../types';
 import { PRODUCTS as initialProducts } from '../constants';
 
-const PRODUCTS_KEY = 'products';
-const USERS_KEY = 'users';
+if (!db || !storage) {
+  throw new Error("A configuração do Firebase não foi carregada. Verifique o arquivo firebase/config.ts");
+}
 
-// =================================================================================
-// NOTA PARA O DESENVOLVEDOR:
-// Este arquivo foi preparado para se conectar a um backend e sincronizar os dados.
-// As funções agora são 'assíncronas' (async), o que é necessário para
-// se comunicar com um servidor na nuvem.
-//
-// PARA COMPLETAR A SINCRONIZAÇÃO:
-// Um desenvolvedor precisa substituir a lógica de `localStorage` dentro destas
-// funções por chamadas a um backend real (ex: Firebase).
-//
-//    - Firebase Firestore: Para buscar e salvar os dados de produtos e usuários.
-//      (Ex: `db.collection('products').get()`, `db.collection('products').add(...)`)
-//
-//    - Firebase Storage: Para fazer upload das imagens dos produtos.
-//      (Ex: `storage.ref(`images/${file.name}`).put(file)`)
-//
-// Após a integração, qualquer alteração feita em um dispositivo será
-// refletida automaticamente em todos os outros.
-// =================================================================================
+// ================== Restauração de Dados ==================
+export async function restoreInitialData(): Promise<void> {
+  console.log("Iniciando restauração de dados para o Firebase...");
+  
+  const batch = writeBatch(db);
 
-// Simulação de uma chamada de API (mantendo o localStorage como fallback por enquanto)
-const simulateApiCall = <T,>(key: string, fallbackData: T): Promise<T> => {
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            try {
-                const savedData = localStorage.getItem(key);
-                resolve(savedData ? JSON.parse(savedData) : fallbackData);
-            } catch (error) {
-                console.error(`Falha ao carregar dados da chave '${key}':`, error);
-                resolve(fallbackData);
+  // 1. Deletar todos os produtos existentes
+  const productsCol = collection(db, 'products');
+  const productSnapshot = await getDocs(productsCol);
+  productSnapshot.docs.forEach(doc => {
+    batch.delete(doc.ref);
+  });
+  console.log(`${productSnapshot.size} produtos existentes marcados para exclusão.`);
+
+  // 2. Deletar o documento de configuração (marcas/categorias)
+  const configDocRef = doc(db, 'config', 'app_config');
+  batch.delete(configDocRef);
+  console.log("Documento de configuração existente marcado para exclusão.");
+  
+  // 3. Adicionar produtos iniciais a partir do constants.ts
+  initialProducts.forEach(product => {
+    const docRef = doc(db, 'products', product.id);
+    batch.set(docRef, product);
+  });
+  console.log(`${initialProducts.length} produtos iniciais marcados para adição.`);
+  
+  // 4. Criar novo documento de configuração com marcas e categorias
+  const initialBrands = [...new Set(initialProducts.map(p => p.brand))].sort();
+  const initialCategories = [...new Set(initialProducts.map(p => p.category))].sort();
+  batch.set(configDocRef, {
+    brands: initialBrands,
+    categories: initialCategories,
+  });
+  console.log("Novo documento de configuração marcado para adição.");
+
+  // 5. Commit todas as operações no batch
+  await batch.commit();
+  console.log("Restauração de dados para o Firebase concluída com sucesso!");
+};
+
+// ================== Produtos ==================
+export async function getProducts(): Promise<Product[]> {
+  const productsCol = collection(db, 'products');
+  const productSnapshot = await getDocs(productsCol);
+  const products = productSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+  return products.sort((a, b) => a.name.localeCompare(b.name));
+};
+
+export async function saveProduct(
+    productData: Omit<Product, 'id'> & { id?: string }, 
+    imageFile: File | null
+): Promise<Product> {
+    let finalImageUrl = productData.imageUrl;
+
+    if (imageFile) {
+        const imageRef = ref(storage, `products/${Date.now()}_${imageFile.name}`);
+        const snapshot = await uploadBytes(imageRef, imageFile);
+        finalImageUrl = await getDownloadURL(snapshot.ref);
+    }
+    
+    const docRef = productData.id ? doc(db, 'products', productData.id) : doc(collection(db, 'products'));
+    
+    const productToSave: Product = {
+        ...productData,
+        id: docRef.id,
+        imageUrl: finalImageUrl,
+    };
+    
+    await setDoc(docRef, productToSave);
+    return productToSave;
+};
+
+export async function deleteProduct(product: Product): Promise<void> {
+    // Delete image from storage if it's a firebase URL
+    if (product.imageUrl.includes('firebasestorage.googleapis.com')) {
+        try {
+            const imageRef = ref(storage, product.imageUrl);
+            await deleteObject(imageRef);
+        } catch (error: any) {
+            if (error.code === 'storage/object-not-found') {
+                console.warn("Imagem não encontrada no Storage, pode já ter sido removida:", product.imageUrl);
+            } else {
+                console.error("Erro ao deletar imagem do Storage:", error);
             }
-        }, 200); // Pequeno delay para simular a rede
+        }
+    }
+    
+    await deleteDoc(doc(db, 'products', product.id));
+};
+
+// ================== Marcas & Categorias ==================
+async function getConfigDoc() {
+  const configDocRef = doc(db, 'config', 'app_config');
+  const docSnap = await getDoc(configDocRef);
+  if (!docSnap.exists()) {
+    console.warn("Documento de configuração não encontrado! Execute a restauração de dados.");
+    return { brands: [], categories: [] };
+  }
+  return docSnap.data() as { brands: string[], categories: string[] };
+}
+
+export async function getBrands(): Promise<string[]> {
+  const config = await getConfigDoc();
+  return config.brands;
+};
+
+export async function getCategories(): Promise<string[]> {
+  const config = await getConfigDoc();
+  return config.categories;
+};
+
+async function addItem(itemType: 'brands' | 'categories', itemName: string): Promise<void> {
+  const config = await getConfigDoc();
+  const items = config[itemType];
+  if (!items.includes(itemName)) {
+    const newItems = [...items, itemName].sort();
+    await setDoc(doc(db, 'config', 'app_config'), { [itemType]: newItems }, { merge: true });
+  }
+}
+export function addBrand(name: string): Promise<void> { return addItem('brands', name) };
+export function addCategory(name: string): Promise<void> { return addItem('categories', name) };
+
+async function deleteItem(itemType: 'brands' | 'categories', itemName: string): Promise<void> {
+    const config = await getConfigDoc();
+    const items = config[itemType];
+    const newItems = items.filter(i => i !== itemName);
+    await setDoc(doc(db, 'config', 'app_config'), { [itemType]: newItems }, { merge: true });
+};
+export function deleteBrand(name: string): Promise<void> { return deleteItem('brands', name) };
+export function deleteCategory(name: string): Promise<void> { return deleteItem('categories', name) };
+
+async function updateItem(itemType: 'brand' | 'category', oldName: string, newName: string): Promise<void> {
+    // 1. Update config document
+    const configDocRef = doc(db, 'config', 'app_config');
+    const config = await getConfigDoc();
+    const items = config[itemType === 'brand' ? 'brands' : 'categories'];
+    const updatedItems = items.map(i => i === oldName ? newName : i).sort();
+    
+    // 2. Find all products using the old item name
+    const productsRef = collection(db, 'products');
+    const q = query(productsRef, where(itemType, "==", oldName));
+    const querySnapshot = await getDocs(q);
+
+    // 3. Use a batch to update everything atomically
+    const batch = writeBatch(db);
+    batch.set(configDocRef, { [itemType === 'brand' ? 'brands' : 'categories']: updatedItems }, { merge: true });
+
+    querySnapshot.forEach(documentSnapshot => {
+        batch.update(documentSnapshot.ref, { [itemType]: newName });
     });
+
+    await batch.commit();
+};
+export function updateBrand(oldName: string, newName: string): Promise<void> { return updateItem('brand', oldName, newName) };
+export function updateCategory(oldName: string, newName: string): Promise<void> { return updateItem('category', oldName, newName) };
+
+
+// ================== Usuários ==================
+export async function getUsers(): Promise<User[]> {
+  const usersCol = collection(db, 'users');
+  const userSnapshot = await getDocs(usersCol);
+  return userSnapshot.docs.map(doc => doc.data() as User);
 };
 
-
-export const getProducts = async (): Promise<Product[]> => {
-  console.log("Buscando produtos...");
-  // SUBSTITUIR: Lógica para buscar produtos do seu backend (ex: Firebase Firestore)
-  // Exemplo com Firebase:
-  // const snapshot = await db.collection('products').get();
-  // return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-  // Fallback temporário usando localStorage
-  return await simulateApiCall<Product[]>(PRODUCTS_KEY, initialProducts);
+export async function addUser(user: User): Promise<void> {
+    // Use WhatsApp as the document ID for easy lookup and to prevent duplicates
+    const userRef = doc(db, 'users', user.whatsapp);
+    await setDoc(userRef, user);
 };
 
-export const saveProducts = async (products: Product[]): Promise<void> => {
-  console.log("Salvando produtos...");
-  // SUBSTITUIR: Lógica para salvar a lista completa de produtos no seu backend.
-  // Nota: Um backend mais robusto teria endpoints para adicionar/editar/excluir
-  // um produto de cada vez, em vez de salvar a lista inteira.
-  
-  // Fallback temporário usando localStorage
-  try {
-    localStorage.setItem(PRODUCTS_KEY, JSON.stringify(products));
-  } catch (error) {
-    console.error("Falha ao salvar produtos no localStorage:", error);
-  }
+export async function updateUser(user: User): Promise<void> {
+    const userRef = doc(db, 'users', user.whatsapp);
+    await setDoc(userRef, user, { merge: true });
 };
 
-export const getUsers = async (): Promise<User[]> => {
-    console.log("Buscando usuários...");
-  // SUBSTITUIR: Lógica para buscar usuários do seu backend.
-  
-  // Fallback temporário usando localStorage
-  return await simulateApiCall<User[]>(USERS_KEY, []);
-};
-
-export const saveUsers = async (users: User[]): Promise<void> => {
-  console.log("Salvando usuários...");
-  // SUBSTITUIR: Lógica para salvar usuários no seu backend.
-
-  // Fallback temporário usando localStorage
-  try {
-    localStorage.setItem(USERS_KEY, JSON.stringify(users));
-  } catch (error) {
-    console.error("Falha ao salvar usuários no localStorage:", error);
-  }
+export async function deleteUser(whatsapp: string): Promise<void> {
+    await deleteDoc(doc(db, 'users', whatsapp));
 };

@@ -14,9 +14,9 @@ const AdminNotification: React.FC<AdminNotificationProps> = ({ onDismiss }) => {
           <InfoIcon />
         </div>
         <div className="ml-3 flex-grow">
-          <p className="font-bold">Próximo Passo: Sincronização na Nuvem</p>
+          <p className="font-bold">Modo de Administrador Ativado</p>
           <p className="text-sm mt-1">
-            O aplicativo foi preparado para sincronização! Para que as alterações apareçam em outros dispositivos (celular, computador, etc.), um desenvolvedor precisa conectar o app a um serviço de backend, como o <strong>Firebase do Google</strong>.
+            Você está conectado ao <strong>Firebase</strong>. Todas as suas alterações no catálogo, clientes, marcas e categorias serão salvas em tempo real na nuvem.
           </p>
         </div>
         <div className="ml-auto pl-3">

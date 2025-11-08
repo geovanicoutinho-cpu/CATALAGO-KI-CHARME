@@ -12,7 +12,7 @@ interface VariantSelectorProps {
   isUserLoggedIn: boolean;
   onLoginClick: () => void;
   cartItems: CartItem[];
-  onUpdateQuantity: (productId: number, newQuantity: number) => void;
+  onUpdateQuantity: (productId: string, newQuantity: number) => void;
 }
 
 const VariantSelector: React.FC<VariantSelectorProps> = ({ product, onClose, onAddVariant, isUserLoggedIn, onLoginClick, cartItems, onUpdateQuantity }) => {
