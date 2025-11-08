@@ -1,10 +1,9 @@
-import { db, storage } from '../firebase/config';
+import { db } from '../firebase/config';
 import { collection, getDocs, doc, setDoc, deleteDoc, writeBatch, getDoc, query, where, documentId } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { Product, User } from '../types';
 import { PRODUCTS as initialProducts } from '../constants';
 
-if (!db || !storage) {
+if (!db) {
   throw new Error("A configuração do Firebase não foi carregada. Verifique o arquivo firebase/config.ts");
 }
 
@@ -35,10 +34,10 @@ export async function restoreInitialData(): Promise<void> {
   console.log(`${initialProducts.length} produtos iniciais marcados para adição.`);
   
   // 4. Criar novo documento de configuração com marcas e categorias
-  const initialBrands = [...new Set(initialProducts.map(p => p.brand))].sort();
+  const initialMarcas = [...new Set(initialProducts.map(p => p.marca))].sort();
   const initialCategories = [...new Set(initialProducts.map(p => p.category))].sort();
   batch.set(configDocRef, {
-    brands: initialBrands,
+    marcas: initialMarcas,
     categories: initialCategories,
   });
   console.log("Novo documento de configuração marcado para adição.");
@@ -47,6 +46,13 @@ export async function restoreInitialData(): Promise<void> {
   await batch.commit();
   console.log("Restauração de dados para o Firebase concluída com sucesso!");
 };
+
+// ================== Verificação de Saúde do Firebase ==================
+export async function checkFirestoreConnection(): Promise<void> {
+    const docRef = doc(db, 'health_checks', 'test_write');
+    await setDoc(docRef, { timestamp: new Date(), status: 'testing' });
+    await deleteDoc(docRef);
+}
 
 // ================== Produtos ==================
 export async function getProducts(): Promise<Product[]> {
@@ -57,61 +63,66 @@ export async function getProducts(): Promise<Product[]> {
 };
 
 export async function saveProduct(
-    productData: Omit<Product, 'id'> & { id?: string }, 
-    imageFile: File | null
+    productData: Omit<Product, 'id'> & { id?: string }
 ): Promise<Product> {
-    let finalImageUrl = productData.imageUrl;
-
-    if (imageFile) {
-        const imageRef = ref(storage, `products/${Date.now()}_${imageFile.name}`);
-        const snapshot = await uploadBytes(imageRef, imageFile);
-        finalImageUrl = await getDownloadURL(snapshot.ref);
-    }
-    
-    const docRef = productData.id ? doc(db, 'products', productData.id) : doc(collection(db, 'products'));
-    
-    const productToSave: Product = {
-        ...productData,
-        id: docRef.id,
-        imageUrl: finalImageUrl,
+    // Cria um objeto limpo e sanitizado para o Firestore para prevenir valores undefined.
+    const dataForFirestore = {
+        name: productData.name,
+        marca: productData.marca,
+        category: productData.category,
+        description: productData.description,
+        price: productData.price,
+        imageUrl: productData.imageUrl, // A URL é salva diretamente
+        isOutOfStock: productData.isOutOfStock || false,
+        isFeatured: productData.isFeatured || false,
+        variants: (productData.variants || []).map(v => ({
+            id: v.id,
+            name: v.name,
+            isOutOfStock: v.isOutOfStock === true, // Garante explicitamente que seja um booleano
+        })),
+        discounts: (productData.discounts || []).map(d => ({
+            quantity: d.quantity,
+            value: d.value,
+            type: d.type,
+        })), // Mapeia explicitamente os campos para remover o 'id' temporário
     };
     
-    await setDoc(docRef, productToSave);
-    return productToSave;
+    const docRef = productData.id ? doc(db, 'products', productData.id) : doc(collection(db, 'products'));
+    await setDoc(docRef, dataForFirestore);
+    
+    // Constrói o objeto para retornar ao estado do aplicativo, garantindo que esteja completo.
+    const savedProduct: Product = {
+        ...dataForFirestore,
+        id: docRef.id,
+    };
+
+    return savedProduct;
 };
 
 export async function deleteProduct(product: Product): Promise<void> {
-    // Delete image from storage if it's a firebase URL
-    if (product.imageUrl.includes('firebasestorage.googleapis.com')) {
-        try {
-            const imageRef = ref(storage, product.imageUrl);
-            await deleteObject(imageRef);
-        } catch (error: any) {
-            if (error.code === 'storage/object-not-found') {
-                console.warn("Imagem não encontrada no Storage, pode já ter sido removida:", product.imageUrl);
-            } else {
-                console.error("Erro ao deletar imagem do Storage:", error);
-            }
-        }
-    }
-    
+    // A imagem não é mais gerenciada pelo app, então basta deletar o documento.
     await deleteDoc(doc(db, 'products', product.id));
 };
 
 // ================== Marcas & Categorias ==================
-async function getConfigDoc() {
+async function getConfigDoc(): Promise<{ marcas: string[], categories: string[] }> {
   const configDocRef = doc(db, 'config', 'app_config');
   const docSnap = await getDoc(configDocRef);
   if (!docSnap.exists()) {
     console.warn("Documento de configuração não encontrado! Execute a restauração de dados.");
-    return { brands: [], categories: [] };
+    return { marcas: [], categories: [] };
   }
-  return docSnap.data() as { brands: string[], categories: string[] };
+  const data = docSnap.data();
+  // Garante que sempre retornaremos um array, mesmo que o campo não exista no documento.
+  return {
+    marcas: Array.isArray(data.marcas) ? data.marcas : [],
+    categories: Array.isArray(data.categories) ? data.categories : [],
+  };
 }
 
-export async function getBrands(): Promise<string[]> {
+export async function getMarcas(): Promise<string[]> {
   const config = await getConfigDoc();
-  return config.brands;
+  return config.marcas;
 };
 
 export async function getCategories(): Promise<string[]> {
@@ -119,31 +130,35 @@ export async function getCategories(): Promise<string[]> {
   return config.categories;
 };
 
-async function addItem(itemType: 'brands' | 'categories', itemName: string): Promise<void> {
+async function addItem(itemType: 'marcas' | 'categories', itemName: string): Promise<void> {
+  const configDocRef = doc(db, 'config', 'app_config');
   const config = await getConfigDoc();
   const items = config[itemType];
-  if (!items.includes(itemName)) {
-    const newItems = [...items, itemName].sort();
-    await setDoc(doc(db, 'config', 'app_config'), { [itemType]: newItems }, { merge: true });
+  const trimmedItemName = itemName.trim();
+  
+  // Verificação case-insensitive para corresponder à lógica da UI e evitar duplicatas
+  if (trimmedItemName && !items.some(i => i.toLowerCase() === trimmedItemName.toLowerCase())) {
+    const newItems = [...items, trimmedItemName].sort();
+    await setDoc(configDocRef, { [itemType]: newItems }, { merge: true });
   }
 }
-export function addBrand(name: string): Promise<void> { return addItem('brands', name) };
+export function addMarca(name: string): Promise<void> { return addItem('marcas', name) };
 export function addCategory(name: string): Promise<void> { return addItem('categories', name) };
 
-async function deleteItem(itemType: 'brands' | 'categories', itemName: string): Promise<void> {
+async function deleteItem(itemType: 'marcas' | 'categories', itemName: string): Promise<void> {
     const config = await getConfigDoc();
     const items = config[itemType];
     const newItems = items.filter(i => i !== itemName);
     await setDoc(doc(db, 'config', 'app_config'), { [itemType]: newItems }, { merge: true });
 };
-export function deleteBrand(name: string): Promise<void> { return deleteItem('brands', name) };
+export function deleteMarca(name: string): Promise<void> { return deleteItem('marcas', name) };
 export function deleteCategory(name: string): Promise<void> { return deleteItem('categories', name) };
 
-async function updateItem(itemType: 'brand' | 'category', oldName: string, newName: string): Promise<void> {
+async function updateItem(itemType: 'marca' | 'category', oldName: string, newName: string): Promise<void> {
     // 1. Update config document
     const configDocRef = doc(db, 'config', 'app_config');
     const config = await getConfigDoc();
-    const items = config[itemType === 'brand' ? 'brands' : 'categories'];
+    const items = config[itemType === 'marca' ? 'marcas' : 'categories'];
     const updatedItems = items.map(i => i === oldName ? newName : i).sort();
     
     // 2. Find all products using the old item name
@@ -153,7 +168,7 @@ async function updateItem(itemType: 'brand' | 'category', oldName: string, newNa
 
     // 3. Use a batch to update everything atomically
     const batch = writeBatch(db);
-    batch.set(configDocRef, { [itemType === 'brand' ? 'brands' : 'categories']: updatedItems }, { merge: true });
+    batch.set(configDocRef, { [itemType === 'marca' ? 'marcas' : 'categories']: updatedItems }, { merge: true });
 
     querySnapshot.forEach(documentSnapshot => {
         batch.update(documentSnapshot.ref, { [itemType]: newName });
@@ -161,7 +176,7 @@ async function updateItem(itemType: 'brand' | 'category', oldName: string, newNa
 
     await batch.commit();
 };
-export function updateBrand(oldName: string, newName: string): Promise<void> { return updateItem('brand', oldName, newName) };
+export function updateMarca(oldName: string, newName: string): Promise<void> { return updateItem('marca', oldName, newName) };
 export function updateCategory(oldName: string, newName: string): Promise<void> { return updateItem('category', oldName, newName) };
 
 

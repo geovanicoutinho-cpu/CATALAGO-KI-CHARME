@@ -64,7 +64,7 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ product, allProducts, onC
               {product.category}
             </span>
             <h1 className="text-3xl md:text-4xl font-extrabold text-gray-800 mb-2">{product.name}</h1>
-            <p className="text-lg font-semibold text-primary mb-6">{product.brand}</p>
+            <p className="text-lg font-semibold text-primary mb-6">{product.marca}</p>
             <p className="text-gray-700 text-base leading-relaxed mb-8 flex-grow">{product.description}</p>
             
             <div className="flex flex-col sm:flex-row items-center justify-between bg-gray-50 p-4 rounded-lg mt-auto gap-4">

@@ -10,13 +10,13 @@ interface ProductCardProps {
   onViewDetails: (product: Product) => void;
   isAdminMode?: boolean;
   onEdit?: (product: Product) => void;
-  onSetBrand?: (brand: string) => void;
+  onSetMarca?: (marca: string) => void;
   onSetCategory?: (category: string) => void;
   isUserLoggedIn: boolean;
   onLoginClick: () => void;
 }
 
-const ProductCard: React.FC<ProductCardProps> = ({ product, index, onAddToCart, onViewDetails, isAdminMode, onEdit, onSetBrand, onSetCategory, isUserLoggedIn, onLoginClick }) => {
+const ProductCard: React.FC<ProductCardProps> = ({ product, index, onAddToCart, onViewDetails, isAdminMode, onEdit, onSetMarca, onSetCategory, isUserLoggedIn, onLoginClick }) => {
   const formattedPrice = new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
@@ -32,9 +32,9 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, index, onAddToCart, 
     }
   };
 
-  const handleBrandClick = (e: React.MouseEvent) => {
+  const handleMarcaClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onSetBrand?.(product.brand);
+    onSetMarca?.(product.marca);
   };
 
   const handleCategoryClick = (e: React.MouseEvent) => {
@@ -65,8 +65,8 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, index, onAddToCart, 
         <div className="flex-grow" onClick={handleCardClick} >
           <h2 className="text-base sm:text-lg font-bold text-gray-800 mb-1 h-12 sm:h-14 overflow-hidden cursor-pointer">{product.name}</h2>
           <div className="flex items-center mb-2 flex-wrap gap-2">
-              <button onClick={handleBrandClick} className="text-sm font-semibold text-primary mr-2 hover:underline focus:underline focus:outline-none">
-                {product.brand}
+              <button onClick={handleMarcaClick} className="text-sm font-semibold text-primary mr-2 hover:underline focus:underline focus:outline-none">
+                {product.marca}
               </button>
               <button onClick={handleCategoryClick} className="inline-block bg-secondary text-primary text-xs font-medium px-2.5 py-0.5 rounded-full hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-primary">
                 {product.category}

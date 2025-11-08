@@ -3,7 +3,7 @@ import Header from './components/Header';
 import ProductList from './components/ProductList';
 import Cart from './components/Cart';
 import { Product, CartItem, Variant, User } from './types';
-import BrandFilter from './components/BrandFilter';
+import MarcaFilter from './components/MarcaFilter';
 import CategoryFilter from './components/CategoryFilter';
 import ProductForm from './components/ProductForm';
 import PlusIcon from './components/icons/PlusIcon';
@@ -16,16 +16,16 @@ import UserManagement from './components/UserManagement';
 import { 
   getProducts, 
   getUsers, 
-  getBrands, 
+  getMarcas, 
   getCategories,
   saveProduct,
   deleteProduct as deleteProductFromDb,
   addUser,
   updateUser,
   deleteUser as deleteUserFromDb,
-  addBrand,
-  deleteBrand,
-  updateBrand,
+  addMarca,
+  deleteMarca,
+  updateMarca,
   addCategory,
   deleteCategory,
   updateCategory,
@@ -33,20 +33,23 @@ import {
 } from './services/dataService';
 import AdminNotification from './components/AdminNotification';
 import BrandCategoryManagement from './components/BrandCategoryManagement';
-import { isFirebaseConfigured, firebaseConfig } from './firebase/config';
+import { isFirebaseConfigured } from './firebase/config';
 import FirebaseNotConfigured from './components/FirebaseNotConfigured';
+import FirebaseRulesInstructions from './components/FirebaseRulesInstructions';
+import FirebaseHealthCheck from './components/FirebaseHealthCheck';
+import FeaturedCarousel from './components/FeaturedCarousel';
 
 
 const ADMIN_USERNAME = 'GEOVANI';
 const ADMIN_PASSWORD = '140890';
 
-type AdminView = 'products' | 'users' | 'brands' | 'categories';
+type AdminView = 'products' | 'users' | 'marcas' | 'categories';
 
 const App: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [selectedBrand, setSelectedBrand] = useState<string | null>(null);
+  const [selectedMarca, setSelectedMarca] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -60,12 +63,13 @@ const App: React.FC = () => {
   
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [users, setUsers] = useState<User[]>([]);
-  const [brands, setBrands] = useState<string[]>([]);
+  const [marcas, setMarcas] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   
   const [adminView, setAdminView] = useState<AdminView>('products');
   const [showAdminNotification, setShowAdminNotification] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
+  const [showRulesInstructions, setShowRulesInstructions] = useState(true);
 
 
   useEffect(() => {
@@ -76,15 +80,15 @@ const App: React.FC = () => {
     const loadData = async () => {
       setIsLoading(true);
       try {
-        const [loadedProducts, loadedUsers, loadedBrands, loadedCategories] = await Promise.all([
+        const [loadedProducts, loadedUsers, loadedMarcas, loadedCategories] = await Promise.all([
           getProducts(),
           getUsers(),
-          getBrands(),
+          getMarcas(),
           getCategories()
         ]);
         setProducts(loadedProducts);
         setUsers(loadedUsers);
-        setBrands(loadedBrands);
+        setMarcas(loadedMarcas);
         setCategories(loadedCategories);
       } catch (error) {
         console.error("Erro ao carregar dados do Firebase:", error);
@@ -95,17 +99,20 @@ const App: React.FC = () => {
     };
     loadData();
   }, []);
+  
+  const featuredProducts = useMemo(() => products.filter(p => p.isFeatured).sort((a, b) => a.name.localeCompare(b.name)), [products]);
+  const regularProducts = useMemo(() => products.filter(p => !p.isFeatured), [products]);
 
-  const handleBrandSelect = (brand: string) => {
-    setSelectedBrand(prev => (prev === brand ? null : brand));
+  const handleMarcaSelect = (marca: string) => {
+    setSelectedMarca(prev => (prev === marca ? null : marca));
   };
   
   const handleCategorySelect = (category: string) => {
     setSelectedCategory(prev => (prev === category ? null : category));
   };
 
-  const handleSetBrand = (brand: string) => {
-    setSelectedBrand(brand);
+  const handleSetMarca = (marca: string) => {
+    setSelectedMarca(marca);
     setSearchTerm('');
     window.scrollTo(0, 0);
   };
@@ -126,18 +133,18 @@ const App: React.FC = () => {
   const filteredProducts = useMemo(() => {
     const lowercasedSearchTerm = searchTerm.toLowerCase();
     
-    return products.filter(product => {
-      const brandMatch = !selectedBrand || product.brand === selectedBrand;
+    return regularProducts.filter(product => {
+      const brandMatch = !selectedMarca || product.marca === selectedMarca;
       const categoryMatch = !selectedCategory || product.category === selectedCategory;
       
       const searchMatch = lowercasedSearchTerm.trim() === '' ||
         product.name.toLowerCase().includes(lowercasedSearchTerm) ||
-        product.brand.toLowerCase().includes(lowercasedSearchTerm) ||
+        product.marca.toLowerCase().includes(lowercasedSearchTerm) ||
         product.category.toLowerCase().includes(lowercasedSearchTerm);
 
       return brandMatch && categoryMatch && searchMatch;
     });
-  }, [products, selectedBrand, selectedCategory, searchTerm]);
+  }, [regularProducts, selectedMarca, selectedCategory, searchTerm]);
 
   const handleAddToCart = (product: Product) => {
     const isProductOutOfStock = product.variants && product.variants.length > 0
@@ -333,9 +340,8 @@ const App: React.FC = () => {
   };
 
   const handleSaveProduct = async (
-    productData: Omit<Product, 'id'> & { id?: string },
-    imageFile: File | null
-  ) => {
+    productData: Omit<Product, 'id'> & { id?: string }
+  ): Promise<void> => {
       const hasVariants = productData.variants && productData.variants.length > 0;
       const allVariantsOutOfStock = hasVariants ? productData.variants.every(v => v.isOutOfStock) : false;
 
@@ -346,7 +352,7 @@ const App: React.FC = () => {
       };
       
       try {
-        const savedProduct = await saveProduct(baseProductData, imageFile);
+        const savedProduct = await saveProduct(baseProductData);
         if (baseProductData.id) { // Editing
             setProducts(prev => prev.map(p => p.id === savedProduct.id ? savedProduct : p));
         } else { // Adding
@@ -354,9 +360,13 @@ const App: React.FC = () => {
         }
         setIsFormOpen(false);
         setEditingProduct(null);
+        // Se o salvamento for bem-sucedido, talvez as regras estejam corretas.
+        // O usuário pode dispensar a notificação.
+        setShowRulesInstructions(false);
       } catch (error) {
           console.error("Erro ao salvar produto:", error);
-          alert("Falha ao salvar o produto.");
+          // Re-throw the error so the form can catch it and display a message
+          throw error;
       }
   };
   
@@ -370,7 +380,7 @@ const App: React.FC = () => {
   };
   
   const handleGoHome = () => {
-    setSelectedBrand(null);
+    setSelectedMarca(null);
     setSelectedCategory(null);
     setViewingProduct(null);
     setSearchTerm('');
@@ -383,6 +393,7 @@ const App: React.FC = () => {
         setIsLoginModalOpen(false);
         setAdminView('products');
         setShowAdminNotification(true);
+        setShowRulesInstructions(true); // Mostra as instruções ao logar
     } else {
         alert('Usuário ou senha de administrador inválidos.');
     }
@@ -499,7 +510,7 @@ const App: React.FC = () => {
   };
   
   const handleEditItem = (
-    itemType: 'brand' | 'category',
+    itemType: 'marca' | 'category',
     setter: React.Dispatch<React.SetStateAction<string[]>>,
     updateFn: (old: string, newI: string) => Promise<void>
   ) => async (oldItem: string, newItem: string) => {
@@ -542,12 +553,12 @@ Esta ação não pode ser desfeita.`;
 
   const showSearchBar = viewingProduct ? true : !isAdminMode;
   const isUserLoggedIn = !!currentUser;
-  const filterKey = `${selectedBrand}-${selectedCategory}`;
+  const filterKey = `${selectedMarca}-${selectedCategory}`;
 
   const adminTitle = {
     products: 'Gerenciar Catálogo',
     users: 'Gerenciar Clientes',
-    brands: 'Gerenciar Marcas',
+    marcas: 'Gerenciar Marcas',
     categories: 'Gerenciar Categorias',
   };
   
@@ -591,11 +602,22 @@ Esta ação não pode ser desfeita.`;
           <>
             {!isAdminMode ? (
               <>
-                <div className="space-y-8 mb-8">
-                  <BrandFilter 
-                    brands={brands}
-                    selectedBrand={selectedBrand}
-                    onBrandSelect={handleBrandSelect}
+                {featuredProducts.length > 0 && (
+                  <FeaturedCarousel
+                    products={featuredProducts}
+                    onAddToCart={handleAddToCart}
+                    onViewDetails={handleViewDetails}
+                    isUserLoggedIn={isUserLoggedIn}
+                    onLoginClick={() => setIsUserAuthModalOpen(true)}
+                    onSetMarca={handleSetMarca}
+                    onSetCategory={handleSetCategory}
+                  />
+                )}
+                <div className="space-y-8 my-8">
+                  <MarcaFilter 
+                    marcas={marcas}
+                    selectedMarca={selectedMarca}
+                    onMarcaSelect={handleMarcaSelect}
                   />
                   <CategoryFilter
                     categories={categories}
@@ -603,12 +625,13 @@ Esta ação não pode ser desfeita.`;
                     onCategorySelect={handleCategorySelect}
                   />
                 </div>
+                 <h2 className="text-2xl font-bold text-gray-800 mb-6">Todos os Produtos</h2>
                 <div key={filterKey}>
                     <ProductList
                     products={filteredProducts}
                     onAddToCart={handleAddToCart}
                     onViewDetails={handleViewDetails}
-                    onSetBrand={handleSetBrand}
+                    onSetMarca={handleSetMarca}
                     onSetCategory={handleSetCategory}
                     isUserLoggedIn={isUserLoggedIn}
                     onLoginClick={() => setIsUserAuthModalOpen(true)}
@@ -618,7 +641,13 @@ Esta ação não pode ser desfeita.`;
             ) : (
               <>
                 {showAdminNotification && <AdminNotification onDismiss={() => setShowAdminNotification(false)} />}
-                <div className="flex justify-between items-center mb-8">
+                <FirebaseHealthCheck />
+                {showRulesInstructions && (
+                    <FirebaseRulesInstructions 
+                      onDismiss={() => setShowRulesInstructions(false)}
+                    />
+                )}
+                <div className="flex justify-between items-center my-8">
                   <h1 className="text-3xl md:text-4xl font-extrabold text-gray-800">
                     {adminTitle[adminView]}
                   </h1>
@@ -673,13 +702,13 @@ Esta ação não pode ser desfeita.`;
                 {adminView === 'users' && (
                   <UserManagement users={users} onDeleteUser={handleDeleteUser} onApproveUser={handleApproveUser} />
                 )}
-                {adminView === 'brands' && (
+                {adminView === 'marcas' && (
                   <BrandCategoryManagement 
                     title="Gerenciar Marcas"
-                    items={brands}
-                    onAddItem={handleAddItem(setBrands, addBrand)}
-                    onDeleteItem={handleDeleteItem(setBrands, deleteBrand)}
-                    onEditItem={handleEditItem('brand', setBrands, updateBrand)}
+                    items={marcas}
+                    onAddItem={handleAddItem(setMarcas, addMarca)}
+                    onDeleteItem={handleDeleteItem(setMarcas, deleteMarca)}
+                    onEditItem={handleEditItem('marca', setMarcas, updateMarca)}
                   />
                 )}
                 {adminView === 'categories' && (
@@ -719,7 +748,7 @@ Esta ação não pode ser desfeita.`;
           onSave={handleSaveProduct}
           onClose={() => setIsFormOpen(false)}
           onDelete={handleDeleteProduct}
-          brands={brands}
+          marcas={marcas}
           categories={categories}
         />
       )}

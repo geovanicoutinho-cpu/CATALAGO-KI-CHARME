@@ -8,13 +8,13 @@ interface ProductListProps {
   onViewDetails: (product: Product) => void;
   isAdminMode?: boolean;
   onEdit?: (product: Product) => void;
-  onSetBrand?: (brand: string) => void;
+  onSetMarca?: (marca: string) => void;
   onSetCategory?: (category: string) => void;
   isUserLoggedIn: boolean;
   onLoginClick: () => void;
 }
 
-const ProductList: React.FC<ProductListProps> = ({ products, onAddToCart, onViewDetails, isAdminMode, onEdit, onSetBrand, onSetCategory, isUserLoggedIn, onLoginClick }) => {
+const ProductList: React.FC<ProductListProps> = ({ products, onAddToCart, onViewDetails, isAdminMode, onEdit, onSetMarca, onSetCategory, isUserLoggedIn, onLoginClick }) => {
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
       {products.map((product, index) => (
@@ -26,7 +26,7 @@ const ProductList: React.FC<ProductListProps> = ({ products, onAddToCart, onView
           onViewDetails={onViewDetails}
           isAdminMode={isAdminMode}
           onEdit={onEdit}
-          onSetBrand={onSetBrand}
+          onSetMarca={onSetMarca}
           onSetCategory={onSetCategory}
           isUserLoggedIn={isUserLoggedIn}
           onLoginClick={onLoginClick}

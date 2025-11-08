@@ -4,11 +4,12 @@ export const PRODUCTS: Product[] = [
   {
     id: '1',
     name: 'Coloração Profissional VLOSS',
-    brand: 'VLOSS',
+    marca: 'VLOSS',
     category: 'COLORAÇÃO',
     description: 'Cobertura de 100% dos fios brancos com cores vibrantes, duradouras e brilho intenso. Escolha sua cor.',
     price: 28.50,
     imageUrl: 'https://i.imgur.com/Qy20e9w.png',
+    isFeatured: true,
     variants: [
       { id: '1001', name: '1.0 Preto Azulado', isOutOfStock: false },
       { id: '1002', name: '3.0 Castanho Escuro', isOutOfStock: false },
@@ -21,25 +22,27 @@ export const PRODUCTS: Product[] = [
   {
     id: '2',
     name: 'Máscara de Hidratação Profunda',
-    brand: 'CANVENSE',
+    marca: 'CANVENSE',
     category: 'Tratamentos',
     description: 'Reparação intensiva para cabelos secos e danificados. Devolve a maciez e o brilho.',
     price: 79.90,
     imageUrl: 'https://i.imgur.com/U8t2e4X.png',
+    isFeatured: true,
   },
   {
     id: '3',
     name: 'Pó Descolorante Rápido 9 Tons',
-    brand: 'VLOSS',
+    marca: 'VLOSS',
     category: 'Descoloração',
     description: 'Abre até 9 tons de forma segura e eficaz. Fórmula Dust-Free com ação anti-amarelamento.',
     price: 119.90,
     imageUrl: 'https://i.imgur.com/K5f4z9W.png',
+    isFeatured: true,
   },
   {
     id: '4',
     name: 'Tonalizante Sem Amônia',
-    brand: 'VIA CHARM',
+    marca: 'VIA CHARM',
     category: 'COLORAÇÃO',
     description: 'Banho de brilho que realça a cor dos cabelos, com fórmula suave que trata enquanto colore. Escolha sua cor.',
     price: 35.00,
@@ -54,7 +57,7 @@ export const PRODUCTS: Product[] = [
   {
     id: '5',
     name: 'Sérum Reparador de Pontas',
-    brand: 'CANVENSE',
+    marca: 'CANVENSE',
     category: 'Tratamentos',
     description: 'Sela as cutículas, controla o frizz e protege contra o calor do secador e chapinha. Toque sedoso.',
     price: 49.90,
@@ -63,7 +66,7 @@ export const PRODUCTS: Product[] = [
   {
     id: '6',
     name: 'Kit Cronograma Capilar Completo',
-    brand: 'HOKA',
+    marca: 'HOKA',
     category: 'Tratamentos',
     description: 'Conjunto com 3 máscaras (Hidratação, Nutrição e Reconstrução) para um tratamento completo.',
     price: 219.90,
@@ -72,7 +75,7 @@ export const PRODUCTS: Product[] = [
   {
     id: '7',
     name: 'Água Oxigenada Cremosa 30 Volumes',
-    brand: 'VLOSS',
+    marca: 'VLOSS',
     category: 'Descoloração',
     description: 'Emulsão reveladora estabilizada, ideal para processos de coloração e descoloração.',
     price: 15.00,
@@ -81,7 +84,7 @@ export const PRODUCTS: Product[] = [
   {
     id: '8',
     name: 'Ampola de Reconstrução Imediata',
-    brand: 'VIA CHARM',
+    marca: 'VIA CHARM',
     category: 'Tratamentos',
     description: 'Dose concentrada de queratina e aminoácidos para cabelos quimicamente tratados.',
     price: 19.90,
@@ -90,7 +93,7 @@ export const PRODUCTS: Product[] = [
   {
     id: '9',
     name: 'Progressiva Orgânica Sem Formol',
-    brand: 'LESCOR',
+    marca: 'LESCOR',
     category: 'ALISAMENTOS',
     description: 'Alisamento capilar de alta performance que promove efeito liso natural, com brilho e sem frizz. Fórmula orgânica e sem formol.',
     price: 250.00,
@@ -99,7 +102,7 @@ export const PRODUCTS: Product[] = [
   {
     id: '10',
     name: 'Pomada Modeladora Efeito Matte',
-    brand: 'BLACKPOOL',
+    marca: 'BLACKPOOL',
     category: 'Finalizadores',
     description: 'Fixação forte com acabamento sem brilho. Ideal para penteados modernos e estruturados.',
     price: 42.00,
@@ -108,7 +111,7 @@ export const PRODUCTS: Product[] = [
   {
     id: '11',
     name: 'Óleo de Argan Imperial',
-    brand: 'HOKA',
+    marca: 'HOKA',
     category: 'Tratamentos',
     description: 'Tratamento luxuoso com óleo de argan puro. Nutrição intensa, brilho espelhado e controle do frizz.',
     price: 159.90,
@@ -117,7 +120,7 @@ export const PRODUCTS: Product[] = [
   {
     id: '12',
     name: 'Spray de Brilho Intenso',
-    brand: 'VLOSS',
+    marca: 'VLOSS',
     category: 'Finalizadores',
     description: 'Finalizador em spray que proporciona um brilho luminoso e instantâneo aos fios.',
     price: 55.00,
@@ -126,7 +129,7 @@ export const PRODUCTS: Product[] = [
   {
     id: '13',
     name: 'Leave-in Protetor Térmico',
-    brand: 'VIA CHARM',
+    marca: 'VIA CHARM',
     category: 'Finalizadores',
     description: 'Protege os cabelos do calor de ferramentas térmicas, desembaraça e hidrata.',
     price: 38.50,
@@ -135,7 +138,7 @@ export const PRODUCTS: Product[] = [
   {
     id: '14',
     name: 'Kit Manutenção Pós-Química',
-    brand: 'HOKA',
+    marca: 'HOKA',
     category: 'HOME CARE',
     description: 'Kit com shampoo e condicionador para cuidar dos cabelos em casa, prolongando o efeito do tratamento de salão.',
     price: 129.90,

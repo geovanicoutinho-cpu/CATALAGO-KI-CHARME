@@ -5,16 +5,17 @@ export interface Variant {
 }
 
 export interface DiscountTier {
-  id: number; // Used for React keys in the form
+  // Fix: Made 'id' optional as it is a UI concern for React keys and not stored in the database.
+  id?: number; // Used for React keys in the form
   quantity: number;
   value: number; // The discount amount (either percentage rate or fixed value)
   type: 'percentage' | 'value'; // The type of discount
 }
 
 export interface Product {
-  id: string;
+  id:string;
   name: string;
-  brand: string;
+  marca: string;
   category: string;
   description: string;
   price: number;
@@ -22,6 +23,7 @@ export interface Product {
   variants?: Variant[];
   isOutOfStock?: boolean;
   discounts?: DiscountTier[];
+  isFeatured?: boolean;
 }
 
 export interface CartItem extends Product {

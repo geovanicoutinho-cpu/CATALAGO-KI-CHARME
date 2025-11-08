@@ -1,7 +1,6 @@
 // Importe as funções que você precisa dos SDKs que você precisa
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
 
 // **************************************************************************************************
 // TODO: ADICIONE A CONFIGURAÇÃO DO SEU PROJETO FIREBASE AQUI
@@ -30,13 +29,11 @@ export const isFirebaseConfigured = !!firebaseConfig.projectId;
 // Verifique se o Firebase já foi inicializado
 let app;
 let db = null;
-let storage = null;
 
 if (isFirebaseConfigured) {
   try {
     app = initializeApp(firebaseConfig);
     db = getFirestore(app);
-    storage = getStorage(app);
   } catch (e) {
     console.error("Falha ao inicializar o Firebase. Verifique sua configuração.", e);
   }
@@ -45,4 +42,4 @@ if (isFirebaseConfigured) {
 }
 
 
-export { db, storage };
+export { db };

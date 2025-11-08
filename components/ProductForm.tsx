@@ -4,66 +4,67 @@ import XIcon from './icons/XIcon';
 import TrashIcon from './icons/TrashIcon';
 import PlusIcon from './icons/PlusIcon';
 import ImageIcon from './icons/ImageIcon';
+import StarIcon from './icons/StarIcon';
 
 interface ProductFormProps {
   product: Product | null;
-  onSave: (productData: Omit<Product, 'id'> & { id?: string }, imageFile: File | null) => void;
+  onSave: (productData: Omit<Product, 'id'> & { id?: string }) => Promise<void>;
   onClose: () => void;
   onDelete?: (productId: string) => void;
-  brands: string[];
+  marcas: string[];
   categories: string[];
 }
 
-const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onClose, onDelete, brands, categories }) => {
+const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onClose, onDelete, marcas, categories }) => {
   const [formData, setFormData] = useState({
     name: '',
-    brand: '',
+    marca: '',
     category: '',
     description: '',
     price: 0,
     imageUrl: '',
     isOutOfStock: false,
+    isFeatured: false,
     variants: [] as Variant[],
     discounts: [] as DiscountTier[],
   });
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string>('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (product) {
       setFormData({
         name: product.name,
-        brand: product.brand,
+        marca: product.marca,
         category: product.category,
         description: product.description,
         price: product.price,
         imageUrl: product.imageUrl,
         isOutOfStock: !!product.isOutOfStock,
+        isFeatured: !!product.isFeatured,
         variants: product.variants?.map(v => ({...v, isOutOfStock: !!v.isOutOfStock})) || [],
         discounts: product.discounts?.map(d => ({ ...d, id: Math.random() })) || [],
       });
-      setImagePreview(product.imageUrl);
-      setImageFile(null);
     } else {
       setFormData({
         name: '',
-        brand: brands.length > 0 ? brands[0] : '',
+        marca: marcas.length > 0 ? marcas[0] : '',
         category: categories.length > 0 ? categories[0] : '',
         description: '',
         price: 0,
         imageUrl: '',
         isOutOfStock: false,
+        isFeatured: false,
         variants: [],
         discounts: [],
       });
-      setImagePreview('');
-      setImageFile(null);
     }
-  }, [product, brands, categories]);
+  }, [product, marcas, categories]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, type } = e.target;
+    setError(null); // Limpa o erro ao alterar qualquer campo
 
     if (type === 'checkbox') {
         const { checked } = e.target as HTMLInputElement;
@@ -75,19 +76,6 @@ const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onClose, onD
             [name]: type === 'number' ? parseFloat(value) || 0 : value,
         }));
     }
-  };
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setImageFile(file);
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-    };
-    reader.readAsDataURL(file);
   };
   
   const handleVariantChange = (index: number, value: string) => {
@@ -148,26 +136,46 @@ const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onClose, onD
       setFormData(prev => ({ ...prev, discounts: newDiscounts }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSaving) return;
+
+    setError(null);
+
     if (!formData.name.trim() || !formData.description.trim()) {
-      alert('Por favor, preencha o nome e a descrição do produto.');
+      setError('Por favor, preencha o nome e a descrição do produto.');
       return;
     }
-    if (!imagePreview) {
-        alert('Por favor, adicione uma imagem para o produto.');
+    if (!formData.imageUrl.trim()) {
+        setError('Por favor, adicione uma URL de imagem para o produto.');
         return;
     }
-    if (!formData.brand || !formData.category) {
-        alert('Por favor, selecione uma marca e uma categoria.');
+    if (!formData.marca || !formData.category) {
+        setError('Por favor, selecione uma marca e uma categoria.');
         return;
     }
 
-    const dataToSave = {
-      ...formData,
-      id: product?.id,
-    };
-    onSave(dataToSave, imageFile);
+    setIsSaving(true);
+    try {
+        const dataToSave = {
+          ...formData,
+          id: product?.id,
+        };
+        await onSave(dataToSave);
+    } catch (err: any) {
+        console.error("Falha no envio do formulário:", err);
+        let friendlyMessage = "Ocorreu um erro desconhecido. Tente novamente.";
+        if (err.message) {
+            if (err.message.includes('permission-denied')) {
+                friendlyMessage = "Erro de permissão. Verifique se as regras de segurança do Firebase estão configuradas corretamente para permitir escrita.";
+            } else {
+                friendlyMessage = `Falha ao salvar: ${err.message}`;
+            }
+        }
+        setError(friendlyMessage);
+    } finally {
+        setIsSaving(false);
+    }
   };
 
   const sectionTitleStyle = "text-lg font-semibold text-slate-700 border-b border-slate-200 pb-3 mb-5";
@@ -196,10 +204,10 @@ const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onClose, onD
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label htmlFor="brand" className={labelStyle}>Marca</label>
-                    <select name="brand" id="brand" value={formData.brand} onChange={handleChange} required className={inputStyle}>
+                    <label htmlFor="marca" className={labelStyle}>Marca</label>
+                    <select name="marca" id="marca" value={formData.marca} onChange={handleChange} required className={inputStyle}>
                       <option value="" disabled>Selecione uma marca</option>
-                      {brands.map(b => <option key={b} value={b}>{b}</option>)}
+                      {marcas.map(b => <option key={b} value={b}>{b}</option>)}
                     </select>
                   </div>
                   <div>
@@ -223,62 +231,57 @@ const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onClose, onD
 
             <section>
               <h3 className={sectionTitleStyle}>Imagem do Produto</h3>
-               <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleImageUpload}
-                className="hidden"
-                accept="image/png, image/jpeg, image/gif, image/webp"
-              />
-              {imagePreview ? (
-                <div className="flex items-center gap-4">
-                  <img
-                    src={imagePreview}
-                    alt="Pré-visualização"
-                    className="h-20 w-20 rounded-lg object-cover border-2 border-slate-200 bg-white p-1"
-                  />
-                  <div className="flex-grow">
-                    <p className="text-sm font-medium text-slate-700 truncate">{imageFile?.name || 'Imagem existente'}</p>
-                     <div className="mt-2 flex items-center gap-4">
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="text-sm font-semibold text-primary hover:underline"
-                        >
-                          Alterar
-                        </button>
-                         <button
-                            type="button"
-                            onClick={() => {
-                                setImagePreview('');
-                                setImageFile(null);
-                            }}
-                            className="text-sm font-semibold text-red-600 hover:underline"
-                          >
-                            Remover
-                          </button>
-                      </div>
-                  </div>
-                </div>
-              ) : (
-                <div 
-                  className="flex justify-center px-6 py-8 border-2 border-slate-300 border-dashed rounded-lg cursor-pointer hover:border-primary transition-colors bg-white hover:bg-slate-50" 
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <div className="space-y-1 text-center">
-                    <ImageIcon />
-                    <p className="text-sm text-slate-600">
-                      <span className="font-semibold text-primary">Adicionar Imagem</span>
+                <div>
+                    <label htmlFor="imageUrl" className={labelStyle}>URL da Imagem</label>
+                    <input 
+                        type="url" 
+                        name="imageUrl" 
+                        id="imageUrl" 
+                        value={formData.imageUrl} 
+                        onChange={handleChange} 
+                        required 
+                        className={inputStyle} 
+                        placeholder="https://exemplo.com/imagem.png"
+                    />
+                    <p className="text-xs text-slate-500 mt-2">
+                      Use um serviço como <a href="https://imgur.com/upload" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Imgur</a> para hospedar sua imagem e cole o link direto aqui.
                     </p>
-                    <p className="text-xs text-slate-500">Clique para selecionar um arquivo</p>
-                  </div>
                 </div>
-              )}
+                {formData.imageUrl && (
+                    <div className="mt-4">
+                        <p className="text-sm font-medium text-slate-600 mb-2">Pré-visualização:</p>
+                        <img
+                            src={formData.imageUrl}
+                            alt="Pré-visualização"
+                            className="h-24 w-24 rounded-lg object-cover border-2 border-slate-200 bg-white p-1"
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                            onLoad={(e) => { e.currentTarget.style.display = 'block'; }}
+                        />
+                    </div>
+                )}
             </section>
 
             <section>
-              <h3 className={sectionTitleStyle}>Variações e Estoque</h3>
-              <div className="space-y-3">
+              <h3 className={sectionTitleStyle}>Visibilidade e Estoque</h3>
+              <div className="space-y-4">
+                <label htmlFor="isFeatured" className="flex items-center justify-between text-sm font-medium text-slate-700 cursor-pointer p-3 bg-white border border-slate-200 rounded-lg">
+                    <span className="flex items-center gap-2">
+                        <StarIcon />
+                        Produto em Destaque (aparece no carrossel inicial)
+                    </span>
+                    <div className="relative inline-flex items-center">
+                        <input
+                            type="checkbox"
+                            name="isFeatured"
+                            id="isFeatured"
+                            checked={formData.isFeatured}
+                            onChange={handleChange}
+                            className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-2 peer-focus:ring-primary/50 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                    </div>
+                </label>
+
                 {formData.variants.map((variant, index) => (
                   <div key={variant.id} className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-lg">
                     <input
@@ -407,27 +410,47 @@ const ProductForm: React.FC<ProductFormProps> = ({ product, onSave, onClose, onD
                 </button>
             </section>
           </div>
-          <div className="p-6 border-t border-slate-200 bg-slate-50/80 flex justify-between items-center flex-shrink-0">
-            <div>
-              {product && onDelete && (
-                <button
-                  type="button"
-                  onClick={() => onDelete(product.id)}
-                  className="px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2"
-                  aria-label="Excluir produto"
-                >
-                  <TrashIcon />
-                  Excluir
-                </button>
-              )}
-            </div>
-            <div className="flex gap-3">
-                <button type="button" onClick={onClose} className="px-5 py-2.5 bg-white text-gray-700 border border-slate-300 rounded-lg font-semibold hover:bg-slate-100 transition-colors">
-                    Cancelar
-                </button>
-                <button type="submit" className="px-5 py-2.5 bg-primary text-white font-semibold rounded-lg hover:bg-primary-hover transition-colors">
-                    Salvar Produto
-                </button>
+          <div className="p-6 border-t border-slate-200 bg-slate-50/80 flex-shrink-0">
+            {error && (
+                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-4" role="alert">
+                    <strong className="font-bold">Erro: </strong>
+                    <span className="block sm:inline">{error}</span>
+                </div>
+            )}
+            <div className="flex justify-between items-center">
+                <div>
+                  {product && onDelete && (
+                    <button
+                      type="button"
+                      onClick={() => onDelete(product.id)}
+                      className="px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2"
+                      aria-label="Excluir produto"
+                    >
+                      <TrashIcon />
+                      Excluir
+                    </button>
+                  )}
+                </div>
+                <div className="flex gap-3">
+                    <button type="button" onClick={onClose} className="px-5 py-2.5 bg-white text-gray-700 border border-slate-300 rounded-lg font-semibold hover:bg-slate-100 transition-colors">
+                        Cancelar
+                    </button>
+                    <button 
+                        type="submit" 
+                        className="px-5 py-2.5 bg-primary text-white font-semibold rounded-lg hover:bg-primary-hover transition-colors disabled:bg-primary/50 disabled:cursor-not-allowed flex items-center justify-center min-w-[140px]"
+                        disabled={isSaving}
+                    >
+                        {isSaving ? (
+                            <>
+                                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Salvando...
+                            </>
+                        ) : 'Salvar Produto'}
+                    </button>
+                </div>
             </div>
           </div>
         </form>
